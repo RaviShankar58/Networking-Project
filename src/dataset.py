@@ -39,8 +39,14 @@
 
 import numpy as np
 import torch
+from preprocessing import compute_grid_mapping
 
 def create_windows(df, N=6):
+    # """
+    # - aggregate traffic per (time, cell_id)
+    # - apply correlation-based grid placement ONCE
+    # - sliding window on reordered data
+    # """
 
     pivot = (
         df.groupby(["time", "cell_id"])["traffic_volume"]
@@ -49,12 +55,16 @@ def create_windows(df, N=6):
           .sort_index()
     )
 
-    data = pivot.values  # shape: (T, M)
+    # --- APPLY GRID MAPPING  ---
+    traffic_matrix = pivot.values          # (T, 49)
+    grid_idx = compute_grid_mapping(traffic_matrix)
+    traffic_matrix = traffic_matrix[:, grid_idx]
+    # --------------------------------
 
     X, Y = [], []
-    for t in range(N, len(data)):
-        X.append(data[t - N : t])
-        Y.append(data[t])
+    for t in range(N, len(traffic_matrix)):
+        X.append(traffic_matrix[t - N : t])
+        Y.append(traffic_matrix[t])
 
     X = np.array(X)   # (samples, N, 49)
     Y = np.array(Y)   # (samples, 49)
@@ -64,7 +74,6 @@ def create_windows(df, N=6):
 
 
 def to_3d_tensor(X, Y):
-    #  Convert to 3D traffic image (N,7,7)
     X = X.reshape(-1, 1, X.shape[1], 7, 7)
     X = torch.tensor(X, dtype=torch.float32)
     Y = torch.tensor(Y, dtype=torch.float32)
